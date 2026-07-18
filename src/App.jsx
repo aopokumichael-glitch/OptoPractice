@@ -22,6 +22,18 @@ export default function App() {
     setView("dashboard");
   };
 
+  // Nav links like "Features" or "Team" are anchors within the landing page. If we're
+  // currently on a different tab (e.g. the simulator), switch to landing first, then
+  // scroll — otherwise the target section wouldn't be in the DOM yet.
+  const goToLandingSection = (id) => {
+    const wasOnLanding = view === "landing";
+    setView("landing");
+    setTimeout(
+      () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }),
+      wasOnLanding ? 0 : 60
+    );
+  };
+
   const colors = {
     navy: "#0B1F3A",
     navyLight: "#132C52",
@@ -37,46 +49,55 @@ export default function App() {
     border: "#D4E4F0",
   };
 
-  const navLinks = ["Home", "Features", "About", "Contact"];
+  const navLinks = ["Home", "Features", "About", "Simulators", "Team", "Contact"];
 
   const features = [
     {
-      icon: "👁",
-      title: "Smart Patient Records",
-      desc: "Centralised EMR system built for eye care. Track prescriptions, vision history, and clinical notes in one place.",
-    },
-    {
-      icon: "📅",
-      title: "Appointment Scheduling",
-      desc: "Reduce no-shows with automated reminders and an intelligent booking calendar that syncs across your practice.",
-    },
-    {
       icon: "🔬",
-      title: "Diagnostic Integration",
-      desc: "Import data directly from OCT, fundus cameras, and autorefractors. Keep all imaging tied to the patient record.",
+      title: "Retinoscopy Simulator",
+      desc: "Practice real streak retinoscopy on a hidden patient case. Sweep meridians, neutralize the reflex, and determine a full sphero-cylindrical prescription — just like a real exam.",
+    },
+    {
+      icon: "👁",
+      title: "Ophthalmoscope Simulator",
+      desc: "Focus the fundus, choose your light aperture, and identify real clinical findings — from normal discs to papilledema and diabetic retinopathy.",
+    },
+    {
+      icon: "✅",
+      title: "Clinically-Calibrated Grading",
+      desc: "Every submission is graded against real clinical tolerances, not a guess — so a passing score actually means something.",
     },
     {
       icon: "📊",
-      title: "Practice Analytics",
-      desc: "Track revenue, appointment volumes, and patient retention with dashboards designed for optometry clinics.",
+      title: "Progress Dashboard",
+      desc: "Every graded attempt is saved to your account, so you can track your accuracy and improvement over time.",
     },
     {
-      icon: "💊",
-      title: "Prescription Management",
-      desc: "Generate, store, and send spectacle and contact lens prescriptions digitally — fully compliant and audit-ready.",
+      icon: "🎓",
+      title: "Practice & Setup Modes",
+      desc: "Practice Mode hides the answer for real self-testing. Setup Mode reveals and lets you edit the case — useful for lecturers building teaching examples.",
     },
     {
       icon: "🔒",
-      title: "Secure & Compliant",
-      desc: "HIPAA-ready infrastructure with end-to-end encryption, role-based access, and automated data backups.",
+      title: "Secure Accounts",
+      desc: "Password hashing, JWT-based sessions, and rate-limited login — your account and progress are protected.",
     },
   ];
 
   const stats = [
-    { value: "12,000+", label: "Patients Managed" },
-    { value: "98%", label: "Clinician Satisfaction" },
-    { value: "340+", label: "Practices Onboarded" },
-    { value: "< 2 min", label: "Average Record Access" },
+    { value: "2", label: "Clinical Simulators" },
+    { value: "100%", label: "Free During Beta" },
+    { value: "Real-Time", label: "Clinical Grading" },
+    { value: "24/7", label: "Practice Access" },
+  ];
+
+  // Placeholder roster — replace with real names/roles/photos. Avatars fall back to
+  // initials until a photo is provided (see the `photo` field).
+  const team = [
+    { name: "Add Team Lead Name", role: "Team Leader", photo: null },
+    { name: "Add Member Name", role: "Contributor", photo: null },
+    { name: "Add Member Name", role: "Contributor", photo: null },
+    { name: "Add Member Name", role: "Contributor", photo: null },
   ];
 
   const s = {
@@ -573,11 +594,33 @@ export default function App() {
         >
           {navLinks.map((l) => (
             <li key={l}>
-              <a href={`#${l.toLowerCase()}`} style={s.navLink}>
+              <a
+                href={`#${l.toLowerCase()}`}
+                style={s.navLink}
+                onClick={(e) => { e.preventDefault(); goToLandingSection(l.toLowerCase()); }}
+              >
                 {l}
               </a>
             </li>
           ))}
+          <li>
+            <a
+              href="#"
+              style={{ ...s.navLink, color: view === "retinoscopy" ? "#fff" : s.navLink.color }}
+              onClick={(e) => { e.preventDefault(); setView("retinoscopy"); }}
+            >
+              Retinoscopy
+            </a>
+          </li>
+          <li>
+            <a
+              href="#"
+              style={{ ...s.navLink, color: view === "ophthalmoscope" ? "#fff" : s.navLink.color }}
+              onClick={(e) => { e.preventDefault(); setView("ophthalmoscope"); }}
+            >
+              Ophthalmoscope
+            </a>
+          </li>
         </ul>
 
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
@@ -624,11 +667,17 @@ export default function App() {
         key={l}
         href={`#${l.toLowerCase()}`}
         style={s.mobileLink}
-        onClick={() => setMenuOpen(false)}
+        onClick={(e) => { e.preventDefault(); goToLandingSection(l.toLowerCase()); setMenuOpen(false); }}
       >
         {l}
       </a>
     ))}
+    <a href="#" style={s.mobileLink} onClick={() => { setView("retinoscopy"); setMenuOpen(false); }}>
+      Retinoscopy Simulator
+    </a>
+    <a href="#" style={s.mobileLink} onClick={() => { setView("ophthalmoscope"); setMenuOpen(false); }}>
+      Ophthalmoscope Simulator
+    </a>
   </div>
 )}
 
@@ -636,65 +685,56 @@ export default function App() {
         <PaymentCallback onDone={returnFromPaymentCallback} />
       ) : view === "admin" && user?.role === "admin" ? (
         <AdminDashboard />
+      ) : view === "retinoscopy" ? (
+        <RetinoscopySimulator />
+      ) : view === "ophthalmoscope" ? (
+        <OphthalmoscopeSimulator />
       ) : view === "dashboard" && user ? (
-        <Dashboard
-          onGoToSimulator={() => {
-            setView("landing");
-            setTimeout(() => document.getElementById("simulator")?.scrollIntoView({ behavior: "smooth" }), 50);
-          }}
-        />
+        <Dashboard onGoToSimulator={() => setView("retinoscopy")} />
       ) : (
         <>
       {/* HERO */}
       <section id="home" style={s.hero}>
         <div style={s.heroLeft}>
-          <span style={s.heroEyebrow}>Optometry Practice Software</span>
+          <span style={s.heroEyebrow}>Optometry Training Simulators</span>
           <h1 style={s.heroH1}>
-            Eye Care,{" "}
-            <span style={s.heroH1Span}>Simplified</span>
+            Master Clinical Skills,{" "}
+            <span style={s.heroH1Span}>Risk-Free</span>
             <br />
-            for Modern Clinics
+            Before You Ever Touch a Patient
           </h1>
           <p style={s.heroSub}>
-            OptoPractice is the all-in-one platform built exclusively for
-            optometrists — from patient intake to prescription delivery.
+            OptoPractice is a virtual training platform for optometry students — practice real
+            retinoscopy and ophthalmoscopy on hidden clinical cases, get graded against real
+            clinical tolerances, and track your progress over time.
           </p>
           <div style={s.heroActions}>
-            {user ? (
-              <button
-                style={s.heroBtnPrimary}
-                onClick={() => document.getElementById("simulator")?.scrollIntoView({ behavior: "smooth" })}
-              >
-                Go to Simulator
-              </button>
-            ) : (
-              <button style={s.heroBtnPrimary} onClick={() => setAuthOpen(true)}>Start Free Trial</button>
-            )}
-            <button style={s.heroBtnSecondary}>Book a Demo</button>
+            <button style={s.heroBtnPrimary} onClick={() => setView("retinoscopy")}>
+              Try the Retinoscopy Simulator
+            </button>
+            <button style={s.heroBtnSecondary} onClick={() => setView("ophthalmoscope")}>
+              Try the Ophthalmoscope Simulator
+            </button>
           </div>
         </div>
 
         <div style={s.heroRight}>
           <div style={s.heroCard}>
-            <p style={s.heroCardTitle}>Today's Patient Summary</p>
+            <p style={s.heroCardTitle}>Your Simulator Progress</p>
             {[
+              { label: "Retinoscopy attempts", value: "12 saved", badge: null },
               {
-                label: "Next appointment",
-                value: "09:30 — Sarah M.",
-                badge: null,
-              },
-              {
-                label: "Status",
+                label: "Best retinoscopy score",
                 value: null,
-                badge: { text: "Confirmed", bg: "rgba(29,158,117,0.2)", color: "#5DCAA5" },
+                badge: { text: "94/100", bg: "rgba(29,158,117,0.2)", color: "#5DCAA5" },
               },
-              { label: "Prescription ready", value: "3 pending", badge: null },
+              { label: "Ophthalmoscope attempts", value: "7 saved", badge: null },
               {
-                label: "Recall due",
+                label: "Account status",
                 value: null,
-                badge: { text: "12 this week", bg: "rgba(26,111,184,0.2)", color: "#2A85D8" },
+                badge: { text: "Free Beta Access", bg: "rgba(26,111,184,0.2)", color: "#2A85D8" },
               },
-              { label: "Last diagnostic sync", value: "2 min ago", badge: null },
+              { label: "Last practice session", value: "Today", badge: null },
             ].map((row, i) => (
               <div key={i} style={s.heroCardRow}>
                 <span style={s.heroCardLabel}>{row.label}</span>
@@ -713,6 +753,9 @@ export default function App() {
                 )}
               </div>
             ))}
+            <p style={{ fontSize: "11px", color: colors.textMuted, margin: "12px 0 0", textAlign: "center" }}>
+              Example dashboard — sign up to start tracking your own attempts.
+            </p>
           </div>
         </div>
       </section>
@@ -769,23 +812,25 @@ export default function App() {
               </li>
             ))}
           </ul>
-          <button style={{ ...s.navCta, padding: "13px 26px", fontSize: "15px" }}>
+          <button
+            style={{ ...s.navCta, padding: "13px 26px", fontSize: "15px" }}
+            onClick={() => document.getElementById("team")?.scrollIntoView({ behavior: "smooth" })}
+          >
             Meet The Team
           </button>
         </div>
 
         <div style={s.aboutRight}>
           <div style={s.aboutCard}>
-            <h3 style={s.aboutCardH3}>Why practices switch to us</h3>
+            <h3 style={s.aboutCardH3}>Why students choose OptoPractice</h3>
             <p style={s.aboutCardP}>
-              Most clinics see measurable improvements within the first 30 days
-              of onboarding.
+              Built for real self-testing, not just click-through practice.
             </p>
             {[
-              { label: "Reduction in admin time", value: "38% avg" },
-              { label: "Patient no-show rate drop", value: "22% avg" },
-              { label: "Time to access a record", value: "Under 90s" },
-              { label: "Setup time", value: "3–5 days" },
+              { label: "Grading tolerance (sphere/cylinder)", value: "±0.25 D" },
+              { label: "Cost during beta", value: "Free" },
+              { label: "Equipment needed to start", value: "None" },
+              { label: "Access", value: "24/7 online" },
             ].map((m, i) => (
               <div key={m.label}>
                 {i > 0 && <div style={s.aboutCardDivider} />}
@@ -798,12 +843,99 @@ export default function App() {
           </div>
         </div>
       </section>
-<div id="simulator">
-        <RetinoscopySimulator />
-      </div>
-      <div id="ophthalmoscope">
-        <OphthalmoscopeSimulator />
-      </div>
+
+      {/* SIMULATORS SHOWCASE */}
+      <section id="simulators" style={s.features}>
+        <p style={s.sectionEyebrow}>Try It Now</p>
+        <h2 style={s.sectionH2}>Two clinical simulators, free to try</h2>
+        <p style={s.sectionSub}>Practice mode hides the answer. Submit your findings to get graded.</p>
+        <div style={{ ...s.featureGrid, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+          <div style={s.featureCard}>
+            <svg viewBox="0 0 100 100" style={{ width: "56px", height: "56px", marginBottom: "14px" }}>
+              <rect x="44" y="10" width="12" height="46" rx="6" fill={colors.blue} />
+              <circle cx="50" cy="62" r="16" fill="none" stroke={colors.blue} strokeWidth="5" />
+              <circle cx="50" cy="62" r="6" fill={colors.blue} />
+              <rect x="40" y="78" width="20" height="10" rx="3" fill={colors.textMuted} />
+            </svg>
+            <h3 style={s.featureTitle}>Retinoscopy Simulator</h3>
+            <p style={s.featureDesc}>
+              Sweep the streak, neutralize the reflex, and determine a full prescription on a
+              hidden patient case.
+            </p>
+            <button
+              style={{ ...s.navCta, marginTop: "14px", backgroundColor: colors.blue }}
+              onClick={() => setView("retinoscopy")}
+            >
+              Open Simulator
+            </button>
+          </div>
+
+          <div style={s.featureCard}>
+            <svg viewBox="0 0 100 100" style={{ width: "56px", height: "56px", marginBottom: "14px" }}>
+              <circle cx="50" cy="38" r="22" fill="none" stroke={colors.blue} strokeWidth="5" />
+              <circle cx="50" cy="38" r="9" fill={colors.blue} />
+              <rect x="44" y="58" width="12" height="30" rx="5" fill={colors.blue} />
+              <circle cx="50" cy="92" r="7" fill={colors.textMuted} />
+            </svg>
+            <h3 style={s.featureTitle}>Ophthalmoscope Simulator</h3>
+            <p style={s.featureDesc}>
+              Focus the fundus, choose your light aperture, and identify real clinical findings —
+              from normal discs to papilledema.
+            </p>
+            <button
+              style={{ ...s.navCta, marginTop: "14px", backgroundColor: colors.blue }}
+              onClick={() => setView("ophthalmoscope")}
+            >
+              Open Simulator
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* TEAM */}
+      <section id="team" style={s.about}>
+        <div style={{ width: "100%" }}>
+          <p style={{ ...s.sectionEyebrow, marginBottom: "12px" }}>Meet The Team</p>
+          <h2 style={{ ...s.sectionH2, textAlign: "left" }}>Group Seven</h2>
+          <p style={{ ...s.sectionSub, textAlign: "left", margin: "0 0 32px" }}>
+            Optometry students at the University of Cape Coast, building OptoPractice as an
+            entrepreneurship &amp; innovation project.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "24px" }}>
+            {team.map((member, i) => (
+              <div key={i} style={{ textAlign: "center" }}>
+                <div
+                  style={{
+                    width: "88px",
+                    height: "88px",
+                    borderRadius: "50%",
+                    margin: "0 auto 14px",
+                    backgroundColor: colors.ice,
+                    border: `2px solid ${colors.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "26px",
+                    fontWeight: 800,
+                    color: colors.blue,
+                    overflow: "hidden",
+                  }}
+                >
+                  {member.photo ? (
+                    <img src={member.photo} alt={member.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    "?"
+                  )}
+                </div>
+                <p style={{ fontWeight: 700, fontSize: "14px", margin: "0 0 2px", color: colors.textPrimary }}>
+                  {member.name}
+                </p>
+                <p style={{ fontSize: "12.5px", color: colors.textMuted, margin: 0 }}>{member.role}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
         </>
       )}
       {/* FOOTER */}
@@ -812,31 +944,36 @@ export default function App() {
           <div style={s.footerBrand}>
             <div style={s.footerBrandName}>👁 OptoPractice</div>
             <p style={s.footerTagline}>
-              The modern practice management platform built for Clinical Optomery Students.
+              A virtual training platform for optometry students, built as an
+              entrepreneurship &amp; innovation project by Group Seven, University of Cape Coast.
             </p>
           </div>
 
           {[
             {
               title: "Product",
-              links: ["Features", "Pricing", "Integrations", "Changelog"],
+              links: [
+                { label: "Retinoscopy Simulator", action: () => setView("retinoscopy") },
+                { label: "Ophthalmoscope Simulator", action: () => setView("ophthalmoscope") },
+                { label: "Features", action: () => goToLandingSection("features") },
+              ],
             },
             {
               title: "Company",
-              links: ["About", "Blog", "Careers", "Contact"],
-            },
-            {
-              title: "Legal",
-              links: ["Privacy Policy", "Terms of Use", "HIPAA", "Security"],
+              links: [
+                { label: "About", action: () => goToLandingSection("about") },
+                { label: "Team", action: () => goToLandingSection("team") },
+                { label: "Contact", action: () => goToLandingSection("contact") },
+              ],
             },
           ].map((col) => (
             <div key={col.title} style={s.footerCol}>
               <p style={s.footerColTitle}>{col.title}</p>
               <ul style={s.footerColList}>
                 {col.links.map((l) => (
-                  <li key={l}>
-                    <a href="#" style={s.footerLink}>
-                      {l}
+                  <li key={l.label}>
+                    <a href="#" style={s.footerLink} onClick={(e) => { e.preventDefault(); l.action(); }}>
+                      {l.label}
                     </a>
                   </li>
                 ))}
@@ -846,12 +983,7 @@ export default function App() {
         </div>
 
         <div style={s.footerBottom}>
-          <span>© 2025 OptoPractice Inc. All rights reserved.</span>
-          <div style={s.footerBottomRight}>
-            <a href="#" style={s.footerLink}>Privacy</a>
-            <a href="#" style={s.footerLink}>Terms</a>
-            <a href="#" style={s.footerLink}>Support</a>
-          </div>
+          <span>© 2026 OptoPractice — a student project, University of Cape Coast.</span>
         </div>
       </footer>
 
