@@ -157,28 +157,40 @@ export default function Dashboard({ onGoToSimulator }) {
 
           {!error &&
             attempts &&
-            attempts.map((a) => (
-              <div key={a.id} style={s.attemptCard}>
-                <div style={s.attemptLeft}>
-                  <span style={s.attemptInstrument}>{a.instrument}</span>
-                  <span style={s.attemptDetail}>
-                    Patient Rx: {a.inputs?.patientSphere ?? "—"} / {a.inputs?.patientCylinder ?? "—"} ×{" "}
-                    {a.inputs?.patientAxis ?? "—"}° &nbsp;•&nbsp; Tested at {a.inputs?.streakAxis ?? "—"}° &nbsp;•&nbsp;
-                    Found: {a.result?.trialLensFound?.toFixed ? a.result.trialLensFound.toFixed(2) : a.result?.trialLensFound} D
+            attempts.map((a) => {
+              const graded = a.result?.mode === "graded";
+              return (
+                <div key={a.id} style={s.attemptCard}>
+                  <div style={s.attemptLeft}>
+                    <span style={s.attemptInstrument}>{a.instrument}</span>
+                    {graded ? (
+                      <span style={s.attemptDetail}>
+                        Your Rx: {a.result.studentRx.sphere.toFixed(2)} / {a.result.studentRx.cylinder.toFixed(2)} ×{" "}
+                        {a.result.studentRx.axis}° &nbsp;•&nbsp; Actual: {a.result.actualRx.sphere.toFixed(2)} /{" "}
+                        {a.result.actualRx.cylinder.toFixed(2)} × {a.result.actualRx.axis}°
+                      </span>
+                    ) : (
+                      <span style={s.attemptDetail}>
+                        Patient Rx: {a.inputs?.patientSphere ?? "—"} / {a.inputs?.patientCylinder ?? "—"} ×{" "}
+                        {a.inputs?.patientAxis ?? "—"}° &nbsp;•&nbsp; Tested at {a.inputs?.streakAxis ?? "—"}°
+                      </span>
+                    )}
+                    <span style={s.attemptDate}>{formatDate(a.created_at)}</span>
+                  </div>
+                  <span
+                    style={{
+                      ...s.badge,
+                      backgroundColor: (graded ? a.result.passed : a.result?.isNeutralized)
+                        ? "rgba(21,184,154,0.14)"
+                        : "rgba(198,55,63,0.1)",
+                      color: (graded ? a.result.passed : a.result?.isNeutralized) ? colors.teal : colors.red,
+                    }}
+                  >
+                    {graded ? `${a.result.score}/100` : a.result?.isNeutralized ? "Neutralized" : "Not neutralized"}
                   </span>
-                  <span style={s.attemptDate}>{formatDate(a.created_at)}</span>
                 </div>
-                <span
-                  style={{
-                    ...s.badge,
-                    backgroundColor: a.result?.isNeutralized ? "rgba(21,184,154,0.14)" : "rgba(198,55,63,0.1)",
-                    color: a.result?.isNeutralized ? colors.teal : colors.red,
-                  }}
-                >
-                  {a.result?.isNeutralized ? "Neutralized" : "Not neutralized"}
-                </span>
-              </div>
-            ))}
+              );
+            })}
         </div>
       </div>
 

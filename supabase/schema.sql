@@ -31,6 +31,8 @@ create table if not exists simulation_attempts (
 );
 
 create index if not exists idx_simulation_attempts_user on simulation_attempts (user_id, created_at desc);
+-- Speeds up future leaderboard/admin queries filtering on graded attempts by score.
+create index if not exists idx_simulation_attempts_result_mode on simulation_attempts ((result->>'mode'));
 
 -- ── updated_at trigger for users ────────────────────────────────────────
 create or replace function set_updated_at()

@@ -4,8 +4,6 @@ import { api } from "./lib/api";
 
 export default function RetinoscopySimulator() {
   const { user } = useAuth();
-  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
-  const [saveError, setSaveError] = useState("");
   // ---------- PATIENT PRESCRIPTION (the "ground truth" refractive error) ----------
   const [patientSphere, setPatientSphere] = useState(-2.0);
   const [patientCylinder, setPatientCylinder] = useState(-1.0);
@@ -76,38 +74,93 @@ export default function RetinoscopySimulator() {
 
   const isNeutralized = reflexState === "neutral";
 
-  // Records this neutralization as a practice attempt: the ground-truth patient Rx,
-  // the meridian tested, and the trial lens power the student found. Requires login
-  // so results can be tied to a user and viewed later (Phase 2 dashboard).
-  const handleSaveAttempt = useCallback(async () => {
-    if (!user) {
-      setSaveState("error");
-      setSaveError("Log in to save your results.");
-      return;
-    }
-    setSaveState("saving");
-    setSaveError("");
+  // ---------- V2: CLINICAL PRACTICE MODE ----------
+  // In practice mode the patient's real Rx is hidden — exactly like a real exam.
+  // The student must find it via retinoscopy and submit their own findings for grading.
+  const [practiceMode, setPracticeMode] = useState(true);
+  const [recordedMeridians, setRecordedMeridians] = useState([]); // [{ axis, power }]
+  const [studentSphere, setStudentSphere] = useState(0);
+  const [studentCylinder, setStudentCylinder] = useState(0);
+  const [studentAxis, setStudentAxis] = useState(90);
+  const [gradeResult, setGradeResult] = useState(null);
+  const [submitState, setSubmitState] = useState("idle"); // idle | submitting | error
+
+  const randomStep = (min, max, step) => {
+    const steps = Math.round((max - min) / step);
+    return +(min + Math.floor(Math.random() * (steps + 1)) * step).toFixed(2);
+  };
+
+  // Generates a fresh, unseen patient case and resets the whole practice session.
+  const handleNewPatientCase = useCallback(() => {
+    setPatientSphere(randomStep(-6, 4, 0.25));
+    setPatientCylinder(randomStep(-4, 0, 0.25)); // minus-cyl convention
+    setPatientAxis(randomStep(0, 175, 5));
+    setTrialLens(0);
+    setRecordedMeridians([]);
+    setStudentSphere(0);
+    setStudentCylinder(0);
+    setStudentAxis(90);
+    setGradeResult(null);
+    setSaveState("idle");
+  }, []);
+
+  // Records the neutralized trial lens power at the current meridian. Replaces any
+  // existing record within 5° of the same meridian so re-testing overwrites cleanly.
+  const handleRecordMeridian = useCallback(() => {
+    setRecordedMeridians((prev) => {
+      const filtered = prev.filter((m) => Math.abs(m.axis - streakAxis) > 5);
+      return [...filtered, { axis: streakAxis, power: trialLens }].sort((a, b) => a.axis - b.axis);
+    });
+  }, [streakAxis, trialLens]);
+
+  // Grades the student's final sphero-cylindrical prescription against the true patient
+  // Rx using clinical tolerances, then reveals the answer and saves the graded attempt.
+  const handleSubmitPrescription = useCallback(async () => {
+    const sphereError = +(studentSphere - patientSphere).toFixed(2);
+    const cylinderError = +(studentCylinder - patientCylinder).toFixed(2);
+    // Axis tolerance widens for low cylinder power (clinically, axis barely matters below ~0.50D).
+    const cylMag = Math.abs(patientCylinder);
+    const axisTolerance = cylMag < 0.5 ? Infinity : cylMag < 1 ? 15 : cylMag < 2 ? 10 : 5;
+    const rawAxisDiff = Math.abs(studentAxis - patientAxis) % 180;
+    const axisError = Math.min(rawAxisDiff, 180 - rawAxisDiff);
+
+    const sphereOk = Math.abs(sphereError) <= 0.25;
+    const cylinderOk = Math.abs(cylinderError) <= 0.25;
+    const axisOk = axisError <= axisTolerance;
+
+    const sphereScore = Math.max(0, 40 - Math.abs(sphereError) * 40);
+    const cylinderScore = Math.max(0, 30 - Math.abs(cylinderError) * 30);
+    const axisScore = axisTolerance === Infinity ? 30 : Math.max(0, 30 - (axisError / axisTolerance) * 15);
+    const score = Math.round(sphereScore + cylinderScore + axisScore);
+    const passed = sphereOk && cylinderOk && axisOk;
+
+    const result = {
+      mode: "graded",
+      recordedMeridians,
+      studentRx: { sphere: studentSphere, cylinder: studentCylinder, axis: studentAxis },
+      actualRx: { sphere: patientSphere, cylinder: patientCylinder, axis: patientAxis },
+      componentResults: { sphereOk, cylinderOk, axisOk, sphereError, cylinderError, axisError },
+      score,
+      passed,
+    };
+
+    setGradeResult(result);
+
+    if (!user) return; // still show the grade locally, just can't persist it
+    setSubmitState("submitting");
     try {
       await api.post("/simulations/attempts", {
         instrument: "retinoscopy",
-        inputs: {
-          patientSphere,
-          patientCylinder,
-          patientAxis,
-          streakAxis,
-          workingDistanceCm,
-        },
-        result: {
-          trialLensFound: trialLens,
-          isNeutralized,
-        },
+        inputs: { workingDistanceCm },
+        result,
       });
-      setSaveState("saved");
+      setSubmitState("idle");
     } catch (err) {
-      setSaveState("error");
-      setSaveError(err.message);
+      setSubmitState("error");
     }
-  }, [user, patientSphere, patientCylinder, patientAxis, streakAxis, workingDistanceCm, trialLens, isNeutralized]);
+  }, [studentSphere, studentCylinder, studentAxis, patientSphere, patientCylinder, patientAxis, recordedMeridians, user, workingDistanceCm]);
+
+
 
   // Reflex speed/brightness/width scale with |netPower| — closer to neutral,
   // the reflex fills the pupil and moves slower; far from neutral, it's a
@@ -157,9 +210,10 @@ export default function RetinoscopySimulator() {
   const resetTrialLens = useCallback(() => setTrialLens(0), []);
 
   const meridianLabel = useMemo(() => {
+    if (practiceMode) return `Testing at ${streakAxis}°`;
     const principal = Math.abs(((streakAxis - patientAxis + 90) % 180) - 90) < 5;
     return principal ? "Near a principal meridian" : "Off-axis meridian";
-  }, [streakAxis, patientAxis]);
+  }, [streakAxis, patientAxis, practiceMode]);
 
   // =====================================================================
   // STYLES
@@ -532,8 +586,9 @@ export default function RetinoscopySimulator() {
           <span style={s.eyebrow}>Advanced Clinical Simulation</span>
           <h1 style={s.h1}>Retinoscopy Simulator — Astigmatic Refraction</h1>
           <p style={s.sub}>
-            Set a patient prescription, sweep the streak through different meridians, and dial in trial
-            lenses to find the neutralization point — just like real streak retinoscopy.
+            Practice mode hides the patient's true prescription, just like a real exam. Sweep the
+            streak through different meridians, neutralize the reflex, record your findings, and
+            submit a final sphero-cylindrical prescription to see how close you got.
           </p>
         </div>
 
@@ -613,77 +668,140 @@ export default function RetinoscopySimulator() {
 
           {/* ===================== RIGHT: CONTROLS ===================== */}
           <div style={s.panelsCol}>
-            {/* PATIENT PRESCRIPTION */}
+            {/* PATIENT CASE */}
             <div style={s.panel}>
               <div style={s.panelHeader}>
                 <h3 style={s.panelTitle}>
                   <span style={{ ...s.panelDot, backgroundColor: colors.amber }} />
-                  Patient Prescription (Ground Truth)
+                  {practiceMode ? "Patient Case (Hidden)" : "Patient Prescription (Setup Mode)"}
                 </h3>
+                <div style={s.btnRow}>
+                  <button
+                    style={{ ...s.chipBtn, ...(practiceMode ? s.chipBtnActive : {}) }}
+                    onClick={() => setPracticeMode(true)}
+                  >
+                    Practice
+                  </button>
+                  <button
+                    style={{ ...s.chipBtn, ...(!practiceMode ? s.chipBtnActive : {}) }}
+                    onClick={() => setPracticeMode(false)}
+                  >
+                    Setup
+                  </button>
+                </div>
               </div>
 
-              <div style={s.twoCol}>
-                <div style={s.controlRow}>
-                  <div style={s.controlLabelRow}>
-                    <span style={s.controlLabel}>Sphere</span>
-                    <span style={s.controlValue}>
-                      {patientSphere > 0 ? "+" : ""}
-                      {patientSphere.toFixed(2)} D
-                    </span>
+              {practiceMode ? (
+                gradeResult ? (
+                  <div style={s.twoCol}>
+                    <div style={s.readoutBox}>
+                      <div style={s.readoutLabel}>Actual Sphere</div>
+                      <div style={s.readoutValue}>{patientSphere > 0 ? "+" : ""}{patientSphere.toFixed(2)} D</div>
+                    </div>
+                    <div style={s.readoutBox}>
+                      <div style={s.readoutLabel}>Actual Cylinder</div>
+                      <div style={s.readoutValue}>{patientCylinder > 0 ? "+" : ""}{patientCylinder.toFixed(2)} D</div>
+                    </div>
+                    <div style={s.readoutBox}>
+                      <div style={s.readoutLabel}>Actual Axis</div>
+                      <div style={s.readoutValue}>{patientAxis}°</div>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="-10"
-                    max="10"
-                    step="0.25"
-                    value={patientSphere}
-                    onChange={(e) => setPatientSphere(parseFloat(e.target.value))}
-                    style={s.slider}
-                  />
-                </div>
+                ) : (
+                  <>
+                    <p style={{ ...s.footNote, margin: "0 0 16px", paddingTop: 0, borderTop: "none" }}>
+                      This patient's true prescription is hidden, just like a real exam. Sweep the
+                      streak through different meridians, neutralize, and record your findings —
+                      then submit your final prescription below to see how you did.
+                    </p>
+                    <button
+                      onClick={handleNewPatientCase}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        borderRadius: "10px",
+                        border: `1px solid ${colors.borderLight}`,
+                        backgroundColor: colors.panelLight,
+                        color: colors.white,
+                        fontWeight: 700,
+                        fontSize: "13.5px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      🎲 New Patient Case
+                    </button>
+                  </>
+                )
+              ) : (
+                <>
+                  <p style={{ ...s.footNote, margin: "0 0 16px", paddingTop: 0, borderTop: "none" }}>
+                    Setup mode shows and lets you edit the true Rx directly — useful for building a
+                    specific teaching case. Switch back to Practice to test yourself blind.
+                  </p>
+                  <div style={s.twoCol}>
+                    <div style={s.controlRow}>
+                      <div style={s.controlLabelRow}>
+                        <span style={s.controlLabel}>Sphere</span>
+                        <span style={s.controlValue}>
+                          {patientSphere > 0 ? "+" : ""}
+                          {patientSphere.toFixed(2)} D
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-10"
+                        max="10"
+                        step="0.25"
+                        value={patientSphere}
+                        onChange={(e) => setPatientSphere(parseFloat(e.target.value))}
+                        style={s.slider}
+                      />
+                    </div>
 
-                <div style={s.controlRow}>
-                  <div style={s.controlLabelRow}>
-                    <span style={s.controlLabel}>Cylinder</span>
-                    <span style={s.controlValue}>
-                      {patientCylinder > 0 ? "+" : ""}
-                      {patientCylinder.toFixed(2)} D
-                    </span>
+                    <div style={s.controlRow}>
+                      <div style={s.controlLabelRow}>
+                        <span style={s.controlLabel}>Cylinder</span>
+                        <span style={s.controlValue}>
+                          {patientCylinder > 0 ? "+" : ""}
+                          {patientCylinder.toFixed(2)} D
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-6"
+                        max="6"
+                        step="0.25"
+                        value={patientCylinder}
+                        onChange={(e) => setPatientCylinder(parseFloat(e.target.value))}
+                        style={s.slider}
+                      />
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="-6"
-                    max="6"
-                    step="0.25"
-                    value={patientCylinder}
-                    onChange={(e) => setPatientCylinder(parseFloat(e.target.value))}
-                    style={s.slider}
-                  />
-                </div>
-              </div>
 
-              <div style={s.controlRow}>
-                <div style={s.controlLabelRow}>
-                  <span style={s.controlLabel}>Axis</span>
-                  <span style={s.controlValue}>{patientAxis}°</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="180"
-                  step="5"
-                  value={patientAxis}
-                  onChange={(e) => setPatientAxis(parseInt(e.target.value))}
-                  style={s.slider}
-                />
-                <div style={s.scaleRow}>
-                  <span>0°</span>
-                  <span>90°</span>
-                  <span>180°</span>
-                </div>
-              </div>
+                  <div style={s.controlRow}>
+                    <div style={s.controlLabelRow}>
+                      <span style={s.controlLabel}>Axis</span>
+                      <span style={s.controlValue}>{patientAxis}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="180"
+                      step="5"
+                      value={patientAxis}
+                      onChange={(e) => setPatientAxis(parseInt(e.target.value))}
+                      style={s.slider}
+                    />
+                    <div style={s.scaleRow}>
+                      <span>0°</span>
+                      <span>90°</span>
+                      <span>180°</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
-              <div style={{ ...s.controlRow, ...s.controlRowLast }}>
+              <div style={{ ...s.controlRow, ...s.controlRowLast, marginTop: "18px" }}>
                 <div style={s.controlLabelRow}>
                   <span style={s.controlLabel}>Working Distance</span>
                   <span style={s.controlValue}>{workingDistanceCm} cm</span>
@@ -704,6 +822,7 @@ export default function RetinoscopySimulator() {
                 </div>
               </div>
             </div>
+
 
             {/* RETINOSCOPE CONTROLS */}
             <div style={s.panel}>
@@ -854,8 +973,7 @@ export default function RetinoscopySimulator() {
 
               {isNeutralized && (
                 <button
-                  onClick={handleSaveAttempt}
-                  disabled={saveState === "saving"}
+                  onClick={handleRecordMeridian}
                   style={{
                     marginTop: "12px",
                     width: "100%",
@@ -866,23 +984,211 @@ export default function RetinoscopySimulator() {
                     color: "#04120E",
                     fontWeight: 700,
                     fontSize: "14px",
-                    cursor: saveState === "saving" ? "default" : "pointer",
-                    opacity: saveState === "saving" ? 0.7 : 1,
+                    cursor: "pointer",
                   }}
                 >
-                  {saveState === "saving"
-                    ? "Saving…"
-                    : saveState === "saved"
-                    ? "Saved ✓"
-                    : "Save this attempt"}
+                  ✓ Record Meridian at {streakAxis}°
                 </button>
               )}
-              {saveState === "error" && (
-                <div style={{ marginTop: "8px", fontSize: "13px", color: colors.red }}>
-                  {saveError}
+            </div>
+
+            {/* RECORDED MERIDIANS */}
+            <div style={s.panel}>
+              <div style={s.panelHeader}>
+                <h3 style={s.panelTitle}>
+                  <span style={{ ...s.panelDot, backgroundColor: colors.blue }} />
+                  Recorded Meridians
+                </h3>
+                <span style={{ fontSize: "12px", color: colors.textMuted }}>
+                  {recordedMeridians.length} recorded{recordedMeridians.length < 2 ? " (need 2+)" : ""}
+                </span>
+              </div>
+
+              {recordedMeridians.length === 0 ? (
+                <p style={{ ...s.footNote, margin: 0, paddingTop: 0, borderTop: "none" }}>
+                  Neutralize the reflex at two or more different meridians, then click "Record Meridian"
+                  above. Real astigmatic refraction needs at least two principal meridians to determine
+                  sphere, cylinder, and axis.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {recordedMeridians.map((m, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        backgroundColor: colors.panelLight,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: "8px",
+                        padding: "9px 14px",
+                        fontSize: "13px",
+                      }}
+                    >
+                      <span style={{ color: colors.textSecondary }}>Meridian {m.axis}°</span>
+                      <span style={{ fontWeight: 700, color: colors.white }}>
+                        {m.power > 0 ? "+" : ""}
+                        {m.power.toFixed(2)} D
+                      </span>
+                      <button
+                        onClick={() => setRecordedMeridians((prev) => prev.filter((_, idx) => idx !== i))}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: colors.textMuted,
+                          cursor: "pointer",
+                          fontSize: "16px",
+                          lineHeight: 1,
+                        }}
+                        aria-label="Remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* FINAL PRESCRIPTION */}
+            <div style={s.panel}>
+              <div style={s.panelHeader}>
+                <h3 style={s.panelTitle}>
+                  <span style={{ ...s.panelDot, backgroundColor: colors.amber }} />
+                  Determine Final Prescription
+                </h3>
+              </div>
+
+              <p style={{ ...s.footNote, margin: "0 0 16px", paddingTop: 0, borderTop: "none" }}>
+                Using your recorded meridians, work out the patient's sphere, cylinder, and axis —
+                the same way you would convert cross-cylinder retinoscopy findings into a final Rx.
+              </p>
+
+              <div style={s.twoCol}>
+                <div style={s.controlRow}>
+                  <div style={s.controlLabelRow}>
+                    <span style={s.controlLabel}>Sphere (D)</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={studentSphere}
+                    onChange={(e) => setStudentSphere(parseFloat(e.target.value) || 0)}
+                    style={{ ...s.slider, height: "38px", padding: "0 10px", color: colors.white, backgroundColor: colors.panelLight, border: `1px solid ${colors.border}` }}
+                  />
+                </div>
+                <div style={s.controlRow}>
+                  <div style={s.controlLabelRow}>
+                    <span style={s.controlLabel}>Cylinder (D)</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={studentCylinder}
+                    onChange={(e) => setStudentCylinder(parseFloat(e.target.value) || 0)}
+                    style={{ ...s.slider, height: "38px", padding: "0 10px", color: colors.white, backgroundColor: colors.panelLight, border: `1px solid ${colors.border}` }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ ...s.controlRow, ...s.controlRowLast }}>
+                <div style={s.controlLabelRow}>
+                  <span style={s.controlLabel}>Axis (°)</span>
+                </div>
+                <input
+                  type="number"
+                  step="5"
+                  min="0"
+                  max="180"
+                  value={studentAxis}
+                  onChange={(e) => setStudentAxis(parseInt(e.target.value) || 0)}
+                  style={{ ...s.slider, height: "38px", padding: "0 10px", color: colors.white, backgroundColor: colors.panelLight, border: `1px solid ${colors.border}` }}
+                />
+              </div>
+
+              <button
+                onClick={handleSubmitPrescription}
+                disabled={recordedMeridians.length < 2 || submitState === "submitting"}
+                style={{
+                  marginTop: "18px",
+                  width: "100%",
+                  padding: "13px",
+                  borderRadius: "10px",
+                  border: "none",
+                  backgroundColor: recordedMeridians.length < 2 ? colors.borderLight : colors.blue,
+                  color: colors.white,
+                  fontWeight: 700,
+                  fontSize: "14.5px",
+                  cursor: recordedMeridians.length < 2 ? "not-allowed" : "pointer",
+                  opacity: submitState === "submitting" ? 0.7 : 1,
+                }}
+              >
+                {submitState === "submitting" ? "Submitting…" : "Submit Prescription for Grading"}
+              </button>
+
+              {!user && (
+                <p style={{ fontSize: "12px", color: colors.textMuted, marginTop: "10px", textAlign: "center" }}>
+                  Log in to save graded attempts to your dashboard.
+                </p>
+              )}
+              {submitState === "error" && (
+                <p style={{ fontSize: "12px", color: colors.red, marginTop: "10px", textAlign: "center" }}>
+                  Grade calculated, but saving to your account failed.
+                </p>
+              )}
+
+              {gradeResult && (
+                <div
+                  style={{
+                    marginTop: "20px",
+                    padding: "18px",
+                    borderRadius: "12px",
+                    backgroundColor: gradeResult.passed ? "rgba(21,184,154,0.1)" : "rgba(226,84,90,0.08)",
+                    border: `1.5px solid ${gradeResult.passed ? colors.teal : colors.red}`,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px" }}>
+                    <span style={{ fontWeight: 800, fontSize: "16px", color: gradeResult.passed ? colors.teal : colors.red }}>
+                      {gradeResult.passed ? "Within Clinical Tolerance ✓" : "Outside Clinical Tolerance"}
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: "20px", color: colors.white }}>{gradeResult.score}/100</span>
+                  </div>
+
+                  {[
+                    { label: "Sphere", ok: gradeResult.componentResults.sphereOk, error: gradeResult.componentResults.sphereError, unit: "D" },
+                    { label: "Cylinder", ok: gradeResult.componentResults.cylinderOk, error: gradeResult.componentResults.cylinderError, unit: "D" },
+                    { label: "Axis", ok: gradeResult.componentResults.axisOk, error: gradeResult.componentResults.axisError, unit: "°" },
+                  ].map((row) => (
+                    <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "13px" }}>
+                      <span style={{ color: colors.textSecondary }}>{row.label}</span>
+                      <span style={{ color: row.ok ? colors.teal : colors.red, fontWeight: 700 }}>
+                        {row.ok ? "✓ Correct" : `Off by ${Math.abs(row.error).toFixed(row.unit === "D" ? 2 : 0)}${row.unit}`}
+                      </span>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={handleNewPatientCase}
+                    style={{
+                      marginTop: "16px",
+                      width: "100%",
+                      padding: "11px",
+                      borderRadius: "10px",
+                      border: `1px solid ${colors.borderLight}`,
+                      backgroundColor: colors.panelLight,
+                      color: colors.white,
+                      fontWeight: 700,
+                      fontSize: "13.5px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🎲 Try a New Patient Case
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
