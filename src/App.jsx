@@ -1,11 +1,13 @@
 import { useState } from "react";
 import RetinoscopySimulator from "./RetinoscopySimulator";
 import AuthModal from "./components/AuthModal";
+import Dashboard from "./pages/Dashboard";
 import { useAuth } from "./context/AuthContext";
 
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [view, setView] = useState("landing"); // 'landing' | 'dashboard'
   const { user, logout } = useAuth();
 
   const colors = {
@@ -538,7 +540,11 @@ export default function App() {
     <div style={s.root}>
       {/* NAVBAR */}
       <nav style={s.nav}>
-        <a href="#" style={s.navBrand}>
+        <a
+          href="#"
+          style={s.navBrand}
+          onClick={(e) => { e.preventDefault(); setView("landing"); }}
+        >
           <div style={s.navLogo}>👁</div>
           <span style={s.navBrandText}>
             Opto<span style={s.navBrandSpan}>Practice</span>
@@ -568,7 +574,13 @@ export default function App() {
               <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "14px" }}>
                 Hi, {user.fullName.split(" ")[0]}
               </span>
-              <button style={s.navCta} onClick={logout}>Log Out</button>
+              <button
+                style={{ ...s.navCta, backgroundColor: view === "dashboard" ? colors.blueLight : s.navCta.backgroundColor }}
+                onClick={() => setView(view === "dashboard" ? "landing" : "dashboard")}
+              >
+                {view === "dashboard" ? "Home" : "Dashboard"}
+              </button>
+              <button style={s.navCta} onClick={() => { logout(); setView("landing"); }}>Log Out</button>
             </div>
           ) : (
             <button style={s.navCta} onClick={() => setAuthOpen(true)}>Get Started</button>
@@ -600,6 +612,15 @@ export default function App() {
   </div>
 )}
 
+      {view === "dashboard" && user ? (
+        <Dashboard
+          onGoToSimulator={() => {
+            setView("landing");
+            setTimeout(() => document.getElementById("simulator")?.scrollIntoView({ behavior: "smooth" }), 50);
+          }}
+        />
+      ) : (
+        <>
       {/* HERO */}
       <section id="home" style={s.hero}>
         <div style={s.heroLeft}>
@@ -756,6 +777,8 @@ export default function App() {
 <div id="simulator">
         <RetinoscopySimulator />
       </div>
+        </>
+      )}
       {/* FOOTER */}
       <footer id="contact" style={s.footer}>
         <div style={s.footerTop}>
