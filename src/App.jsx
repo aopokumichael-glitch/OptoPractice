@@ -1,5 +1,6 @@
 import { useState } from "react";
 import RetinoscopySimulator from "./RetinoscopySimulator";
+import OphthalmoscopeSimulator from "./OphthalmoscopeSimulator";
 import AuthModal from "./components/AuthModal";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -799,6 +800,9 @@ export default function App() {
       </section>
 <div id="simulator">
         <RetinoscopySimulator />
+      </div>
+      <div id="ophthalmoscope">
+        <OphthalmoscopeSimulator />
       </div>
         </>
       )}

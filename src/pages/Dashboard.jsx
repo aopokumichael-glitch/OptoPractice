@@ -221,11 +221,16 @@ export default function Dashboard({ onGoToSimulator }) {
                 <div key={a.id} style={s.attemptCard}>
                   <div style={s.attemptLeft}>
                     <span style={s.attemptInstrument}>{a.instrument}</span>
-                    {graded ? (
+                    {graded && a.instrument === "retinoscopy" ? (
                       <span style={s.attemptDetail}>
                         Your Rx: {a.result.studentRx.sphere.toFixed(2)} / {a.result.studentRx.cylinder.toFixed(2)} ×{" "}
                         {a.result.studentRx.axis}° &nbsp;•&nbsp; Actual: {a.result.actualRx.sphere.toFixed(2)} /{" "}
                         {a.result.actualRx.cylinder.toFixed(2)} × {a.result.actualRx.axis}°
+                      </span>
+                    ) : graded && a.instrument === "ophthalmoscopy" ? (
+                      <span style={s.attemptDetail}>
+                        You said: {a.result.studentDiagnosis} (CDR {a.result.studentCDR.toFixed(2)}) &nbsp;•&nbsp; Actual:{" "}
+                        {a.result.actualDiagnosis} (CDR {a.result.actualCDR.toFixed(2)})
                       </span>
                     ) : (
                       <span style={s.attemptDetail}>
