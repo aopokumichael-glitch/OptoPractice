@@ -92,6 +92,8 @@ export default function Dashboard({ onGoToSimulator }) {
   const { user } = useAuth();
   const [attempts, setAttempts] = useState(null);
   const [error, setError] = useState("");
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState("");
 
   useEffect(() => {
     api
@@ -99,6 +101,18 @@ export default function Dashboard({ onGoToSimulator }) {
       .then((data) => setAttempts(data.attempts))
       .catch((err) => setError(err.message));
   }, []);
+
+  async function handleUpgrade() {
+    setUpgrading(true);
+    setUpgradeError("");
+    try {
+      const data = await api.post("/payments/initialize");
+      window.location.href = data.authorizationUrl; // hand off to Paystack's checkout page
+    } catch (err) {
+      setUpgradeError(err.message);
+      setUpgrading(false);
+    }
+  }
 
   return (
     <div style={s.wrap}>
@@ -124,6 +138,50 @@ export default function Dashboard({ onGoToSimulator }) {
             <span style={s.profileLabel}>Total attempts</span>
             <span style={s.profileValue}>{attempts ? attempts.length : "—"}</span>
           </div>
+
+          {user.isPremium ? (
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                backgroundColor: "rgba(21,184,154,0.1)",
+                border: "1px solid rgba(21,184,154,0.35)",
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: "13px",
+                color: "#0E7A68",
+              }}
+            >
+              ⭐ Premium Member
+            </div>
+          ) : (
+            <div style={{ marginTop: "16px" }}>
+              <button
+                onClick={handleUpgrade}
+                disabled={upgrading}
+                style={{
+                  width: "100%",
+                  padding: "11px",
+                  borderRadius: "10px",
+                  border: "none",
+                  backgroundColor: colors.blue,
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "13.5px",
+                  cursor: upgrading ? "default" : "pointer",
+                  opacity: upgrading ? 0.7 : 1,
+                }}
+              >
+                {upgrading ? "Redirecting to Paystack…" : "⭐ Upgrade to Premium — GHS 50"}
+              </button>
+              {upgradeError && (
+                <p style={{ color: colors.red, fontSize: "12px", marginTop: "8px", textAlign: "center" }}>
+                  {upgradeError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Attempts list */}

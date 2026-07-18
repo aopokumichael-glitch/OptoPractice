@@ -1,11 +1,15 @@
 const express = require('express');
+const { getStats, listUsers, updateUserRole, listPayments } = require('../controllers/adminController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Placeholder for Phase 5 (Admin dashboard).
-router.get('/ping', requireAuth, requireAdmin, (req, res) => {
-  res.json({ ok: true, message: 'Admin routes wired up. Build out Phase 5 here.' });
-});
+// Every route below requires a logged-in admin.
+router.use(requireAuth, requireAdmin);
+
+router.get('/stats', getStats);
+router.get('/users', listUsers);
+router.patch('/users/:id/role', updateUserRole);
+router.get('/payments', listPayments);
 
 module.exports = router;

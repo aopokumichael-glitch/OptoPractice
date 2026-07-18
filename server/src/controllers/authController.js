@@ -23,7 +23,14 @@ function setAuthCookie(res, token) {
 }
 
 function publicUser(row) {
-  return { id: row.id, fullName: row.full_name, email: row.email, role: row.role, createdAt: row.created_at };
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    role: row.role,
+    isPremium: row.is_premium,
+    createdAt: row.created_at,
+  };
 }
 
 async function register(req, res, next) {
@@ -47,7 +54,7 @@ async function register(req, res, next) {
     const { rows } = await pool.query(
       `INSERT INTO users (full_name, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, full_name, email, role, created_at`,
+       RETURNING id, full_name, email, role, is_premium, created_at`,
       [fullName, email.toLowerCase(), passwordHash]
     );
 
@@ -99,7 +106,7 @@ function logout(req, res) {
 async function me(req, res, next) {
   try {
     const { rows } = await pool.query(
-      'SELECT id, full_name, email, role, created_at FROM users WHERE id = $1',
+      'SELECT id, full_name, email, role, is_premium, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found.' });

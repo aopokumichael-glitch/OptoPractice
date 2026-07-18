@@ -2,13 +2,24 @@ import { useState } from "react";
 import RetinoscopySimulator from "./RetinoscopySimulator";
 import AuthModal from "./components/AuthModal";
 import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import PaymentCallback from "./pages/PaymentCallback";
 import { useAuth } from "./context/AuthContext";
 
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [view, setView] = useState("landing"); // 'landing' | 'dashboard'
+  // Paystack redirects the browser to /payment/callback after checkout (a real page
+  // load, not a client-side route change), so we check the URL directly on mount.
+  const [view, setView] = useState(
+    window.location.pathname === "/payment/callback" ? "payment-callback" : "landing"
+  );
   const { user, logout } = useAuth();
+
+  const returnFromPaymentCallback = () => {
+    window.history.replaceState({}, "", "/");
+    setView("dashboard");
+  };
 
   const colors = {
     navy: "#0B1F3A",
@@ -572,7 +583,7 @@ export default function App() {
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "14px" }}>
-                Hi, {user.fullName.split(" ")[0]}
+                Hi, {user.fullName.split(" ")[0]}{user.isPremium ? " ⭐" : ""}
               </span>
               <button
                 style={{ ...s.navCta, backgroundColor: view === "dashboard" ? colors.blueLight : s.navCta.backgroundColor }}
@@ -580,6 +591,14 @@ export default function App() {
               >
                 {view === "dashboard" ? "Home" : "Dashboard"}
               </button>
+              {user.role === "admin" && (
+                <button
+                  style={{ ...s.navCta, backgroundColor: view === "admin" ? colors.blueLight : s.navCta.backgroundColor }}
+                  onClick={() => setView(view === "admin" ? "landing" : "admin")}
+                >
+                  {view === "admin" ? "Home" : "Admin"}
+                </button>
+              )}
               <button style={s.navCta} onClick={() => { logout(); setView("landing"); }}>Log Out</button>
             </div>
           ) : (
@@ -612,7 +631,11 @@ export default function App() {
   </div>
 )}
 
-      {view === "dashboard" && user ? (
+      {view === "payment-callback" ? (
+        <PaymentCallback onDone={returnFromPaymentCallback} />
+      ) : view === "admin" && user?.role === "admin" ? (
+        <AdminDashboard />
+      ) : view === "dashboard" && user ? (
         <Dashboard
           onGoToSimulator={() => {
             setView("landing");
