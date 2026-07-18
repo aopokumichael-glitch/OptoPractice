@@ -14,10 +14,15 @@ function signToken(user) {
 }
 
 function setAuthCookie(res, token) {
+  const isProd = process.env.NODE_ENV === 'production';
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    // In production the frontend and backend live on different domains (Vercel + Render),
+    // so the cookie must be sameSite:'none' + secure:true for the browser to send it on
+    // cross-site requests. In local dev, frontend and backend are same-site (via the Vite
+    // proxy), so 'lax' + no secure flag works over plain http.
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: COOKIE_MAX_AGE_MS,
   });
 }
@@ -99,7 +104,12 @@ async function login(req, res, next) {
 }
 
 function logout(req, res) {
-  res.clearCookie(COOKIE_NAME);
+  const isProd = process.env.NODE_ENV === 'production';
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+  });
   return res.json({ ok: true });
 }
 
