@@ -1,6 +1,11 @@
 import { useState, useMemo, useCallback } from "react";
+import { useAuth } from "./context/AuthContext";
+import { api } from "./lib/api";
 
 export default function RetinoscopySimulator() {
+  const { user } = useAuth();
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
+  const [saveError, setSaveError] = useState("");
   // ---------- PATIENT PRESCRIPTION (the "ground truth" refractive error) ----------
   const [patientSphere, setPatientSphere] = useState(-2.0);
   const [patientCylinder, setPatientCylinder] = useState(-1.0);
@@ -70,6 +75,39 @@ export default function RetinoscopySimulator() {
   }, [netPower]);
 
   const isNeutralized = reflexState === "neutral";
+
+  // Records this neutralization as a practice attempt: the ground-truth patient Rx,
+  // the meridian tested, and the trial lens power the student found. Requires login
+  // so results can be tied to a user and viewed later (Phase 2 dashboard).
+  const handleSaveAttempt = useCallback(async () => {
+    if (!user) {
+      setSaveState("error");
+      setSaveError("Log in to save your results.");
+      return;
+    }
+    setSaveState("saving");
+    setSaveError("");
+    try {
+      await api.post("/simulations/attempts", {
+        instrument: "retinoscopy",
+        inputs: {
+          patientSphere,
+          patientCylinder,
+          patientAxis,
+          streakAxis,
+          workingDistanceCm,
+        },
+        result: {
+          trialLensFound: trialLens,
+          isNeutralized,
+        },
+      });
+      setSaveState("saved");
+    } catch (err) {
+      setSaveState("error");
+      setSaveError(err.message);
+    }
+  }, [user, patientSphere, patientCylinder, patientAxis, streakAxis, workingDistanceCm, trialLens, isNeutralized]);
 
   // Reflex speed/brightness/width scale with |netPower| — closer to neutral,
   // the reflex fills the pupil and moves slower; far from neutral, it's a
@@ -813,6 +851,37 @@ export default function RetinoscopySimulator() {
                   ? `Neutralized at ${streakAxis}° — record this lens power`
                   : `Not neutralized — reflex moving ${reflexState}`}
               </div>
+
+              {isNeutralized && (
+                <button
+                  onClick={handleSaveAttempt}
+                  disabled={saveState === "saving"}
+                  style={{
+                    marginTop: "12px",
+                    width: "100%",
+                    padding: "11px",
+                    borderRadius: "10px",
+                    border: "none",
+                    backgroundColor: colors.teal,
+                    color: "#04120E",
+                    fontWeight: 700,
+                    fontSize: "14px",
+                    cursor: saveState === "saving" ? "default" : "pointer",
+                    opacity: saveState === "saving" ? 0.7 : 1,
+                  }}
+                >
+                  {saveState === "saving"
+                    ? "Saving…"
+                    : saveState === "saved"
+                    ? "Saved ✓"
+                    : "Save this attempt"}
+                </button>
+              )}
+              {saveState === "error" && (
+                <div style={{ marginTop: "8px", fontSize: "13px", color: colors.red }}>
+                  {saveError}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,7 +1,12 @@
 import { useState } from "react";
 import RetinoscopySimulator from "./RetinoscopySimulator";
+import AuthModal from "./components/AuthModal";
+import { useAuth } from "./context/AuthContext";
+
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const colors = {
     navy: "#0B1F3A",
@@ -558,7 +563,16 @@ export default function App() {
         </ul>
 
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <button style={s.navCta}>Get Started</button>
+          {user ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "14px" }}>
+                Hi, {user.fullName.split(" ")[0]}
+              </span>
+              <button style={s.navCta} onClick={logout}>Log Out</button>
+            </div>
+          ) : (
+            <button style={s.navCta} onClick={() => setAuthOpen(true)}>Get Started</button>
+          )}
           <button
             style={s.hamburger}
             onClick={() => setMenuOpen(!menuOpen)}
@@ -601,7 +615,16 @@ export default function App() {
             optometrists — from patient intake to prescription delivery.
           </p>
           <div style={s.heroActions}>
-            <button style={s.heroBtnPrimary}>Start Free Trial</button>
+            {user ? (
+              <button
+                style={s.heroBtnPrimary}
+                onClick={() => document.getElementById("simulator")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Go to Simulator
+              </button>
+            ) : (
+              <button style={s.heroBtnPrimary} onClick={() => setAuthOpen(true)}>Start Free Trial</button>
+            )}
             <button style={s.heroBtnSecondary}>Book a Demo</button>
           </div>
         </div>
@@ -730,7 +753,9 @@ export default function App() {
           </div>
         </div>
       </section>
-<RetinoscopySimulator />
+<div id="simulator">
+        <RetinoscopySimulator />
+      </div>
       {/* FOOTER */}
       <footer id="contact" style={s.footer}>
         <div style={s.footerTop}>
@@ -779,6 +804,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
     </div>
   );
 }
