@@ -201,3 +201,5 @@ and no trailing slash — this is the most common cause.
 - Backend: Node.js, Express
 - Database: PostgreSQL (Supabase)
 - Auth: JWT stored in an httpOnly cookie, bcrypt password hashing
+
+
